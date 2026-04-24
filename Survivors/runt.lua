@@ -198,9 +198,9 @@ primary.required_interrupt_priority = ActorState.InterruptPriority.ANY
 
 Callback.add(primary.on_activate, function(actor, skill, slot)
 	local data = Instance.get_data(actor)
-	print("Primary test")
+	--print("Primary test")
 
-	
+
 	if data.primary_combo_index == 0 then
 		actor:set_state(praimarySlashState)
 	elseif data.primary_combo_index == 1 then
@@ -211,37 +211,43 @@ Callback.add(primary.on_activate, function(actor, skill, slot)
 end)
 
 local function RuntPrimary(character, skillData, comboIndex, sprite, sound)
-	local animationSpeed = 0.2
-	character:actor_animation_set(sprite, animationSpeed)
 	character:skill_util_fix_hspeed()
 
 	if skillData.fired == 1 then return end
 	local characterData = Instance.get_data(character)
-	local damage = character:skill_get_damage(primary)
-	local offset
-	local range
+	local baseDamage = character:skill_get_damage(primary)
 
 	if comboIndex < 2 then	--Slash
-		print("Slash")
-		offset = 20
-		range = 50
-		local attack = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, damage, nil, sprite_sparks).attack_info
+		local animationSpeed = 0.2
+		character:actor_animation_set(sprite, animationSpeed)
+
+		local offset = 15
+		local range = 60
+		local attack = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, baseDamage, nil, sprite_sparks).attack_info
 
 		characterData.primary_combo_index = characterData.primary_combo_index + 1
 	else	--Impale
-		print("Impale")
-		damage = damage * 1.2
-		offset = 80
-		range = 150
-		characterData.primary_combo_index = 0
+		local animationSpeed = 0.25
+		character:actor_animation_set(sprite, animationSpeed)
+
+		local damage = baseDamage * 1.2
+		local offset = 80
+		local range = 150
 		local attack = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, damage, nil, sprite_sparks).attack_info
 		attack.knockback = 5
 		attack.knockback_direction = -character.image_xscale
 
-		local prefectRange = 40
-		local prefectOffset	= 100
-		local attackPerfect = character:fire_explosion(character.x + prefectOffset * character.image_xscale, character.y, prefectRange, 80, damage/2, nil, sprite_sparks).attack_info
+		local perfectRange = 40
+		local perfectHeight = 15
+		local perfectDamage = baseDamage * 1.8
+		local attackPerfect = character:fire_explosion(character.x + (offset + (range - perfectRange)/2) * character.image_xscale,
+			character.y,
+			perfectRange,
+			perfectHeight, 
+			perfectDamage, nil, sprite_sparks).attack_info
 		attackPerfect.stun = 0.3
+
+		characterData.primary_combo_index = 0
 	end
 	skillData.fired = 1
 end
