@@ -1,0 +1,11 @@
+﻿{
+	"name": "Runt",
+	"version_number": "0.0.0",
+	"website_url": "https://github.com/Klehrik/RoRR-Print_n_Scrap",
+	"description": "adds Loker.",
+	"dependencies": [
+		"ReturnOfModding-ReturnOfModding-1.1.11",
+		"ReturnsAPI-ReturnsAPI-0.1.30",
+		"LuaENVY-ENVY-1.2.0"
+	]
+}
