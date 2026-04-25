@@ -194,22 +194,22 @@ primary.cooldown = 5
 primary.damage = 1.5
 primary.require_key_press = false
 primary.hold_facing_direction = true
+primary.is_primary = true
 primary.required_interrupt_priority = ActorState.InterruptPriority.ANY
 
-Callback.add(primary.on_activate, function(actor, skill, slot)
-	local data = Instance.get_data(actor)
-	--print("Primary test")
-
+Callback.add(primary.on_activate, function(character, skill, slot)
+	local data = Instance.get_data(character)
 
 	if data.primary_combo_index == 0 then
-		actor:set_state(praimarySlashState)
+		character:set_state(praimarySlashState)
 	elseif data.primary_combo_index == 1 then
-		actor:set_state(secondSlashState)
+		character:set_state(secondSlashState)
 	else
-		actor:set_state(impaleState)
+		character:set_state(impaleState)
 	end
 end)
 
+--TODO: Improve this as its quite messy
 local function RuntPrimary(character, skillData, comboIndex, sprite, sound)
 	character:skill_util_fix_hspeed()
 
@@ -221,9 +221,9 @@ local function RuntPrimary(character, skillData, comboIndex, sprite, sound)
 		local animationSpeed = 0.2
 		character:actor_animation_set(sprite, animationSpeed)
 
-		local offset = 15
-		local range = 60
-		local attack = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, baseDamage, nil, sprite_sparks).attack_info
+		local offset = 20
+		local range = 80
+		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 60, baseDamage, nil, sprite_sparks).attack_info
 
 		characterData.primary_combo_index = characterData.primary_combo_index + 1
 	else	--Impale
@@ -233,19 +233,20 @@ local function RuntPrimary(character, skillData, comboIndex, sprite, sound)
 		local damage = baseDamage * 1.2
 		local offset = 80
 		local range = 150
-		local attack = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, damage, nil, sprite_sparks).attack_info
-		attack.knockback = 5
-		attack.knockback_direction = -character.image_xscale
+		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, damage, nil, sprite_sparks).attack_info
+		attackInfo.knockback = 5
+		attackInfo.knockback_direction = -character.image_xscale
 
 		local perfectRange = 40
 		local perfectHeight = 15
-		local perfectDamage = baseDamage * 1.8
-		local attackPerfect = character:fire_explosion(character.x + (offset + (range - perfectRange)/2) * character.image_xscale,
+		local perfectDamage = baseDamage * 0.8
+		local attackPerfectInfo = character:fire_explosion(character.x + (offset + (range - perfectRange)/2) * character.image_xscale,
 			character.y,
 			perfectRange,
 			perfectHeight, 
 			perfectDamage, nil, sprite_sparks).attack_info
-		attackPerfect.stun = 0.3
+		attackPerfectInfo.stun = 0.3
+		attackPerfectInfo.climb = 14 * 1.35
 
 		characterData.primary_combo_index = 0
 	end
@@ -382,232 +383,74 @@ end)
 ]]
 --#endregion
 
--- Ion Burst
+-- Acid breath thing
 --#region secondary
 secondary.sprite = sprite_skills
 secondary.subimage = 2
-secondary.cooldown = -1
-secondary.damage = 3.2
-secondary.max_stock = 10
-secondary.auto_restock = false
-secondary.start_with_stock = false
-secondary.use_delay = 30
-secondary.required_interrupt_priority = ActorState.InterruptPriority.SKILL
+secondary.damage = 0.7
+secondary.cooldown = 6 * 60
+secondary.require_key_press = false
 
-local tracer = Tracer.new("runtIonBurst")
-tracer.sparks_offset_y = -5
-
-tracer:set_callback(function(x1, y1, x2, y2)
-	if x1 < x2 then x1 = x1 + 16 else x1 = x1 - 16 end
-
-	y1 = y1 - 5
-	y2 = y2 - 5
-
-	-- line tracer
-	local inst = Object.find("EfLineTracer"):create(x1, y1)
-
-	inst.xend = x2
-	inst.yend = y2
-	inst.sprite_index = sprite_ion_tracer
-	inst.image_speed = 1
-	inst.rate = 0.1
-	inst.blend_1 = Color.from_rgb(255, 255, 255)
-	inst.blend_2 = Color.from_rgb(110, 129, 195)
-	inst.blend_rate = 0.2
-	inst.image_alpha = 1.5
-	inst.bm = 1
-	inst.width = 3
-
-	-- particles
-	local dist = Math.distance(x1, y1, x2, y2)
-	local dir = Math.direction(x1, y1, x2, y2)
-
-	particleWispGTracer:set_direction(dir, dir, 0, 0)
-
-	local px = x1
-	local i = 0
-	while i < dist do
-		particleWispGTracer:create_colour(px, y1 + gm.random_range(-8, 8), Color.from_rgb(110, 129, 195), 1)
-		px = px + gm.lengthdir_x(20, dir)
-		i = i + 20
-	end
-end)
 
 local stateSecondary = ActorState.new("runtSecondary")
 
-Callback.add(secondary.on_activate, function(actor, skill, slot)
-	actor:set_state(stateSecondary)
+Callback.add(secondary.on_activate, function(character, skill, slot)
+	character:set_state(stateSecondary)
 end)
 
-Callback.add(secondary.on_step, function(actor, skill, slot)
-	-- update ion burst's skill icon depending on how many rounds it has
-	local ion_rounds = skill.stock
-	local frame = 1
+Callback.add(stateSecondary.on_enter, function(character, data)
+	data.fired = 0
+	data.isReleased = false
+	data.timeSinceEnter = 0
+	
 
-	if ion_rounds == 0 then
-		frame = 1
-	elseif ion_rounds < 4 then
-		frame = 2
-	elseif ion_rounds < 7 then
-		frame = 3
-	elseif ion_rounds < 10 then
-		frame = 4
-	else
-		frame = 5
+	character:skill_util_strafe_init()
+	--Maybe play a startup animation here? But im unsure of a way to pause going into onstep until this is over other then polling
+end)
+
+--TODO: There is likely a much smarter way to do then this & will probs need to be updated later
+Callback.add(stateSecondary.on_step, function(character, data)
+	character:get_active_skill(Skill.Slot.SECONDARY):freeze_cooldown()
+
+	--This isnt likely to work rn since it woudld only be released for 1 frame and we need it to be released until the end of the animation
+	data.isReleased = not Util.bool(character.x_skill)
+	if not character:is_authority() then
+		data.isReleased = Util.bool(character.activity_var2)	--No idea what this does but i copied from mule
 	end
 
-	skill.subimage = frame
-end)
-
-Callback.add(stateSecondary.on_enter, function(actor, data)
-	actor.image_index = 0
-	data.ion_rounds = actor:get_active_skill(Skill.Slot.SECONDARY).stock + 1 -- compensate for first stock being decremented already
-	data.should_fire = 1
-	data.is_first_shot = 1
-	data.sprite = sprite_shoot2a
-end)
-
-Callback.add(stateSecondary.on_step, function(actor, data)
-	actor:skill_util_fix_hspeed()
-	actor:actor_animation_set(data.sprite, 0.33)
-
-	if data.ion_rounds > 0 and actor.image_index >= 2 then
-		actor.image_index = 0
-		data.should_fire = 1
-
-		if data.sprite == sprite_shoot2a then
-			data.sprite = sprite_shoot2b
-		else
-			data.sprite = sprite_shoot2a
-		end
-	end
-	if data.should_fire == 1 then
-		data.ion_rounds = data.ion_rounds - 1
-		data.should_fire = 0
-
-		actor:sound_play(sound_shoot2, 1.0, 0.9 + (data.ion_rounds * 0.02) + math.random() * 0.2)
-		actor:screen_shake(2)
-
-		if actor:is_authority() then
-			local damage = actor:skill_get_damage(secondary)
-			local dir = actor:skill_util_facing_direction()
-
-			for i=0, actor:buff_count(buffShadowClone) do
-				local attack_info = actor:fire_bullet(actor.x, actor.y, 1000, dir, damage, nil, sprite_ion_sparks, tracer).attack_info
-				attack_info.stun = 1.5
-				attack_info.climb = i * 8 * 1.35
-			end
-		end
-
-		if data.is_first_shot == 0 then
-			local skill = actor:get_active_skill(Skill.Slot.SECONDARY)
-			skill.stock = skill.stock - 1
-		else
-			data.is_first_shot = 0
-		end
+	--Limit the ammount of time they can hold the skill down
+	if data.timeSinceEnter >= 3 * 60 or data.isReleased then
+		--play attack end animation?
+		character:skill_util_exit_state_on_anim_end()
+		return
 	end
 
-	actor:skill_util_exit_state_on_anim_end()
+	--(Anim speed in sprite frames per game frame, move speed multiplier)
+	
+	character:skill_util_strafe_update(0.22 * character.attack_speed, 0.7)
+	character:skill_util_step_strafe_sprites()
+
+	if data.timeSinceEnter % 20 == 0 then
+		local damage = character:skill_get_damage(secondary)
+		local offset = 50
+		local range = 100
+
+		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 60, damage, nil, sprite_sparks).attack_info
+ 	end
+
+	data.timeSinceEnter = data.timeSinceEnter + 1
 end)
 
-Callback.add(stateSecondary.on_get_interrupt_priority, function(actor, data)
-	if actor.image_index > 3 then
+Callback.add(stateSecondary.on_exit, function(character, data)
+	character:skill_util_strafe_exit()
+end)
+
+
+Callback.add(stateSecondary.on_get_interrupt_priority, function(character, data)
+	if character.image_index > 3 then
 		return ActorState.InterruptPriority.SKILL_INTERRUPT_PERIOD
 	else
 		return ActorState.InterruptPriority.PRIORITY_SKILL
-	end
-end)
-
-local objIonOrb = Object.new("RuntOrb")
-objIonOrb:set_depth(-280)
-
-Callback.add(objIonOrb.on_create, function(self)
-	self.target = -4
-	self.counter = 30
-	self.vspeed = -6 + math.random() * 3
-
-	self.charges = 1
-
-	self:instance_sync()
-end)
-
-Callback.add(objIonOrb.on_step, function(self)
-	if not Instance.exists(self.target) then self:destroy() return end
-
-	if self.counter > 0 then
-		self.speed = math.max(0, self.speed - 0.2)
-		self.counter = self.counter - 1
-	else
-		local target = self.target
-
-		self.direction = Math.direction(self.x, self.y, target.x, target.y)
-		self.speed = math.min(12, self.speed + 0.4)
-
-		if self:distance_to_object(target) < 8 then
-			if Net.host then
-				for i = 1, self.charges do
-					GM.actor_skill_add_stock_networked(target, Skill.Slot.SECONDARY)
-				end
-			end
-
-			local flash = Object.find("EfFlash"):create(0, 0)
-			flash.parent = target
-			flash.rate = 0.08
-
-			self:destroy()
-		end
-	end
-end)
-
-Callback.add(objIonOrb.on_draw, function(self)
-	local radius = 6 + self.charges * 4
-	radius = radius + math.sin(Global._current_frame * 0.2) * 0.5
-
-	gm.gpu_set_blendmode(1)
-	gm.draw_set_colour(Color.from_rgb(110, 129, 195))
-	gm.draw_set_alpha(0.6)
-	gm.draw_circle(self.x, self.y, radius, false)
-	--gm.draw_circle(self.x, self.y, radius-2, true)
-	gm.draw_set_alpha(1)
-	gm.draw_set_colour(Color.WHITE)
-
-	for i = 1, self.charges do
-		gm.draw_circle(self.x, self.y, radius + 3 - (i * 3), true)
-	end
-
-	gm.draw_circle(self.x, self.y, radius * 0.33, false)
-	gm.gpu_set_blendmode(0)
-end)
-
-local serializer = function(self, buffer)
-	buffer:write_instance(self.target)
-	buffer:write_float(self.vspeed)
-	buffer:write_byte(self.charges)
-end
-
-local deserializer = function(self, buffer)
-	self.target = buffer:read_instance()
-	self.vspeed = buffer:read_float()
-	self.charges = buffer:read_byte()
-end
-
-Object.add_serializers(objIonOrb, serializer, deserializer)
-
-Callback.add(Callback.ON_KILL_PROC, function(victim, killer)
-	if killer.object_index == gm.constants.oP and killer.class == runt.value then
-		local charges = 1
-
-		if GM.actor_is_elite(victim) then
-			charges = charges * 2
-		end
-
-		if GM.actor_is_boss(victim) then
-			charges = charges * 5
-		end
-
-		local orb = objIonOrb:create(victim.x, victim.y)
-		orb.target = killer
-		orb.charges = charges
 	end
 end)
 --#endregion
