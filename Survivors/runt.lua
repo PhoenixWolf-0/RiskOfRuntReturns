@@ -41,7 +41,7 @@ local sprite_shoot3			= Sprite.new("RuntShoot3", path.combine(SPRITE_PATH, "shoo
 local sprite_shoot4PreGround= Sprite.new("RuntShoot4PreGround", path.combine(SPRITE_PATH, "shoot4PreGround.png"), 5, 39, 63)
 local sprite_shoot4PreAir	= Sprite.new("RuntShoot4PreAir", path.combine(SPRITE_PATH, "shoot4PreAir.png"), 5, 39, 63)
 local sprite_shoot4PreSlide	= Sprite.new("RuntShoot4PreSlide", path.combine(SPRITE_PATH, "shoot4PreSlide.png"), 5, 39, 63)
-local sprite_shoot4			= Sprite.new("RuntShoot4",	path.combine(SPRITE_PATH, "shoot4.png"), 18, 70, 82)
+local sprite_shoot4			= Sprite.new("RuntShoot4",	path.combine(SPRITE_PATH, "shoot4.png"), 8, 90, 34)
 
 local sprite_shoot5PreGround= Sprite.new("RuntShoot5PreGround", path.combine(SPRITE_PATH, "shoot5PreGround.png"), 5, 39, 63)
 local sprite_shoot5PreAir	= Sprite.new("RuntShoot5PreAir", path.combine(SPRITE_PATH, "shoot5PreAir.png"), 5, 39, 63)
@@ -223,19 +223,21 @@ local function RuntPrimary(character, skillData, comboIndex, sprite, sound)
 
 		local offset = 20
 		local range = 80
-		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 60, baseDamage, nil, sprite_sparks).attack_info
-
+		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 60, baseDamage, nil, sprite_sparks)
+		
 		characterData.primary_combo_index = characterData.primary_combo_index + 1
 	else	--Impale
 		local animationSpeed = 0.25
 		character:actor_animation_set(sprite, animationSpeed)
 
-		local damage = baseDamage * 1.2
+		local damage = baseDamage + (baseDamage * 1.2)
 		local offset = 80
 		local range = 150
-		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y, range, 80, damage, nil, sprite_sparks).attack_info
-		attackInfo.knockback = 5
-		attackInfo.knockback_direction = -character.image_xscale
+		local attackInfo = character:fire_explosion(character.x + offset * character.image_xscale, character.y,
+			 range, 80,
+			 damage,
+			 nil, sprite_sparks).attack_info
+		attackInfo:set_knockback(character.image_xscale, nil, 5, Actor.KnockbackKind.PULL)
 
 		local perfectRange = 40
 		local perfectHeight = 15
@@ -399,6 +401,7 @@ Callback.add(secondary.on_activate, function(character, skill, slot)
 end)
 
 Callback.add(stateSecondary.on_enter, function(character, data)
+	character.image_index = 0
 	data.fired = 0
 	data.isReleased = false
 	data.timeSinceEnter = 0
@@ -511,7 +514,7 @@ Callback.add(stateUtility.on_step, function(actor, data)
 end)
 --#endregion
 
--- Execution
+-- TP attack
 --#region special
 special.sprite = sprite_skills
 special.subimage = 7
@@ -528,17 +531,102 @@ specialS.damage = 15
 specialS.require_key_press = true
 specialS.required_interrupt_priority = ActorState.InterruptPriority.SKILL
 
-local stateSpecialPre = ActorState.new("runtSpecialPre")
+--local stateSpecialPre = ActorState.new("runtSpecialPre")
 local stateSpecial = ActorState.new("runtSpecial")
+local stateSpecialSecond = ActorState.new("runtSpecialSecond")
+local stateSpecialThird = ActorState.new("runtSpecialThird")
 
 Callback.add(special.on_activate, function(actor, skill, slot)
-	actor:set_state(stateSpecialPre)
+	actor:set_state(stateSpecial)
 end)
 
 Callback.add(specialS.on_activate, function(actor, skill, slot)
-	actor:set_state(stateSpecialPre)
+	actor:set_state(stateSpecial)
 end)
 
+Callback.add(stateSpecial.on_enter, function(character, data)
+	character.image_index = 0
+	data.fired = 0
+	--data.isCrit = character:actor_roll_crit()
+	data.scepter = character:item_count(Item.find("ancientScepter"))
+	data.HasRestarted = false
+
+	local SpecialRange = 400
+	
+	--Pre calculating targets
+	--Doing it later after we have teliported would mean that instead of doing 1 collision call we need to do 3
+	local FirstTarget, SecondTarget, ThirdTarget
+	local FirstTargetVector, SecondTargetVector, ThirdTargetVector
+	local FirstDist, SecondDist, ThirdDist = math.huge, math.huge, math.huge
+
+	for _,target in pairs(character:get_collisions_circle(gm.constants.pEnemy, character.x, character.y, SpecialRange)) do
+		if target.team ~= character.team then
+			local dx = character.x - target.x
+			local dy = character.y - target.y
+			local dist = dx * dx + dy * dy
+
+			if dist < FirstDist then
+				ThirdTarget, ThirdTargetVector, ThirdDist = SecondTarget, SecondTargetVector, SecondDist
+				SecondTarget, SecondTargetVector, SecondDist = FirstTarget, FirstTargetVector, FirstDist
+				FirstTarget, FirstTargetVector, FirstDist = target, Vector(dx, dy), dist
+
+			elseif dist < SecondDist then
+				ThirdTarget, ThirdTargetVector, ThirdDist = SecondTarget, SecondTargetVector, SecondDist
+				SecondTarget, SecondTargetVector, SecondDist = target, Vector(dx, dy), dist
+
+			elseif dist < ThirdDist then
+				ThirdTarget, ThirdTargetVector, ThirdDist = target, Vector(dx, dy), dist
+			end
+		end
+	end
+
+	--didnt want to constantly be calling & indexing the table in the loop when there could potentially be alot of enemys.
+	--This should be slightly more efficent but might depend on how preformant the arrays provided by modding API are..... cba to test tho
+	--Could maybe optimize more buy not using table {targetObj, targetVector} and making it a pure array or a 2d array shrug
+	data.Targets = Array.new({
+		{ThirdTarget, ThirdTargetVector and ThirdTargetVector:normalized() or nil},
+		{SecondTarget, SecondTargetVector and SecondTargetVector:normalized() or nil},
+		{FirstTarget, FirstTargetVector and FirstTargetVector:normalized() or nil},
+	})
+
+	if not FirstTarget then
+		character:skill_util_exit_state_on_anim_end()
+	else
+		character:actor_animation_set(sprite_shoot4, 0.2)
+	end
+end)
+
+Callback.add(stateSpecial.on_step, function(character, data)
+	character:get_active_skill(Skill.Slot.SPECIAL):freeze_cooldown()
+	character:skill_util_fix_hspeed()
+
+	if data.HasRestarted and character.image_index <= 1 then
+		local TargetData = data.Targets:pop()
+		print(TargetData, data.Targets:print())
+		if not TargetData then return end
+
+
+		local target, vectorFromTarget = table.unpack(TargetData)
+		
+		character.x = target.x + vectorFromTarget.x
+		character.y = target.y + vectorFromTarget.y
+
+		local attackInfo = character:fire_direct(target, character:skill_get_damage(special)).attackInfo
+		--attackInfo:set_critical(data.isCrit)
+		data.HasRestarted = false
+
+		if data.Targets:size() == 0 then
+			character:skill_util_exit_state_on_anim_end()
+		end
+	end
+
+	data.HasRestarted = character.image_index >= 7
+end)
+
+
+
+
+--[[
 Callback.add(stateSpecialPre.on_enter, function(actor, data)
 	actor.image_index = 0
 	data.previous_frame = 0
